@@ -1,0 +1,350 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": " CloudFormation template with YAML - CodePipeline",
+  "Parameters": {
+    "CodeBuildBackendContainerBuildProjectName": {
+      "Description": "CI CodeBuild Project Name",
+      "Type": "String",
+      "MinLength": 1,
+      "MaxLength": 255,
+      "AllowedPattern": "^[a-zA-Z][-a-zA-Z0-9]*$"
+    },
+    "CodeDeployBackendContainerDeployProjectName": {
+      "Description": "CI CodeDeploy Project Name",
+      "Type": "String",
+      "MinLength": 1,
+      "MaxLength": 255,
+      "AllowedPattern": "^[a-zA-Z][-a-zA-Z0-9]*$"
+    },
+    "S3BucketName": {
+      "Description": "Type of this Bucket Name.",
+      "Type": "String",
+      "AllowedPattern": "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+    },
+    "AwsAccessKeyId": {
+      "Description": "AWS Access Key ID",
+      "Type": "String"
+    },
+    "AwsSecretAccessKey": {
+      "Description": "AWS Secret Access Key",
+      "Type": "String"
+    },
+    "Region": {
+      "Description": "Region",
+      "Type": "String"
+    },
+    "AwsProfile": {
+      "Description": "AWS Profile",
+      "Type": "String"
+    },
+    "AmplifyCliVersion": {
+      "Description": "Amplify CLI Version",
+      "Type": "String",
+      "Default": "12.0.0"
+    }
+  },
+  "Resources": {
+    "CloudFormationCodeBuildBackendStagingBuildContainer": {
+      "Type": "AWS::CodeBuild::Project",
+      "Properties": {
+        "Name": {
+          "Ref": "CodeBuildBackendContainerBuildProjectName"
+        },
+        "Source": {
+          "Type": "CODECOMMIT",
+          "GitCloneDepth": 1,
+          "BuildSpec": "buildspec.yml",
+          "Location": "################################################################"
+        },
+        "SourceVersion": "refs/heads/dev",
+        "Environment": {
+          "PrivilegedMode": true,
+          "Type": "LINUX_CONTAINER",
+          "Image": "aws/codebuild/standard:6.0-22.06.30",
+          "ComputeType": "BUILD_GENERAL1_SMALL",
+          "EnvironmentVariables": [
+            {
+              "Name": "AWS_ACCESS_KEY_ID",
+              "Type": "PLAINTEXT",
+              "Value": {
+                "Ref": "AwsAccessKey"
+              }
+            },
+            {
+              "Name": "AWS_SECRET_ACCESS_KEY",
+              "Type": "PLAINTEXT",
+              "Value": {
+                "Ref": "AwsSecretAccessKey"
+              }
+            },
+            {
+              "Name": "REGION",
+              "Type": "PLAINTEXT",
+              "Value": {
+                "Ref": "Region"
+              }
+            },
+            {
+              "Name": "AWS_PROFILE",
+              "Type": "PLAINTEXT",
+              "Value": {
+                "Ref": "AwsProfile"
+              }
+            },
+            {
+              "Name": "AMPLIFY_CLI_VERSION",
+              "Type": "PLAINTEXT",
+              "Value": {
+                "Ref": "AmplifyCliVersion"
+              }
+            }
+          ]
+        },
+        "TimeoutInMinutes": 60,
+        "QueuedTimeoutInMinutes": 10,
+        "ServiceRole": {
+          "Ref": "CloudFormationCodeBuildBackendStagingServiceRole"
+        },
+        "Artifacts": {
+          "Type": "NO_ARTIFACTS"
+        },
+        "LogsConfig": {
+          "CloudWatchLogs": {
+            "Status": "ENABLED",
+            "GroupName": {
+              "Fn::Sub": "${CodeBuildBackendContainerBuildProjectName}-CloudWatchLogs-BuildLogGroup-Name"
+            }
+          }
+        }
+      }
+    },
+    "CloudFormationCodeBuildBackendStagingServiceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "Path": "/",
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["codebuild.amazonaws.com"]
+              },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": {
+              "Fn::Sub": "${CodeBuildBackendContainerBuildProjectName}-codebuild-base-policy"
+            },
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CodeBuildBackendContainerBuildProjectName}-CloudWatchLogs-BuildLogGroup-Name"
+                    },
+                    {
+                      "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CodeBuildBackendContainerBuildProjectName}-CloudWatchLogs-BuildLogGroup-Name:*"
+                    }
+                  ],
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:s3:::${S3BucketName}/*"
+                    }
+                  ],
+                  "Action": [
+                    "s3:PutObject",
+                    "s3:GetObject",
+                    "s3:GetObjectVersion",
+                    "s3:GetBucketAcl",
+                    "s3:GetBucketLocation"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:caas-gql-template"
+                    }
+                  ],
+                  "Action": ["codecommit:GitPull"]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "CloudFormationCodeDeployBackendStagingDeployContainer": {
+      "Type": "AWS::CodeBuild::Project",
+      "Properties": {
+        "Name": {
+          "Ref": "CodeDeployBackendContainerDeployProjectName"
+        },
+        "Source": {
+          "Type": "CODECOMMIT",
+          "GitCloneDepth": 1,
+          "BuildSpec": "deployspec.yml",
+          "Location": "################################################################"
+        },
+        "SourceVersion": "refs/heads/dev",
+        "Environment": {
+          "PrivilegedMode": true,
+          "Type": "LINUX_CONTAINER",
+          "Image": "aws/codebuild/standard:6.0-22.06.30",
+          "ComputeType": "BUILD_GENERAL1_SMALL",
+          "EnvironmentVariables": [
+            {
+              "Name": "AWS_ACCESS_KEY",
+              "Type": "PLAINTEXT",
+              "Value": {
+                "Ref": "AwsAccessKeyId"
+              }
+            },
+            {
+              "Name": "AWS_SECRET_ACCESS_KEY",
+              "Type": "PLAINTEXT",
+              "Value": {
+                "Ref": "AwsSecretAccessKey"
+              }
+            },
+            {
+              "Name": "REGION",
+              "Type": "PLAINTEXT",
+              "Value": {
+                "Ref": "Region"
+              }
+            },
+            {
+              "Name": "AWS_PROFILE",
+              "Type": "PLAINTEXT",
+              "Value": {
+                "Ref": "AwsProfile"
+              }
+            },
+            {
+              "Name": "AMPLIFY_CLI_VERSION",
+              "Type": "PLAINTEXT",
+              "Value": {
+                "Ref": "AmplifyCliVersion"
+              }
+            }
+          ]
+        },
+        "TimeoutInMinutes": 60,
+        "QueuedTimeoutInMinutes": 10,
+        "ServiceRole": {
+          "Ref": "CloudFormationCodeDeployBackendStagingServiceRole"
+        },
+        "Artifacts": {
+          "Type": "NO_ARTIFACTS"
+        },
+        "LogsConfig": {
+          "CloudWatchLogs": {
+            "Status": "ENABLED",
+            "GroupName": {
+              "Fn::Sub": "${CodeDeployBackendContainerDeployProjectName}-CloudWatchLogs-DeployLogGroup-Name"
+            }
+          }
+        }
+      }
+    },
+    "CloudFormationCodeDeployBackendStagingServiceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "Path": "/",
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["codebuild.amazonaws.com"]
+              },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": {
+              "Fn::Sub": "${CodeDeployBackendContainerDeployProjectName}-codeDeploy-base-policy"
+            },
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CodeDeployBackendContainerDeployProjectName}-CloudWatchLogs-DeployLogGroup-Name"
+                    },
+                    {
+                      "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CodeDeployBackendContainerDeployProjectName}-CloudWatchLogs-DeployLogGroup-Name:*"
+                    }
+                  ],
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:s3:::${S3BucketName}/*"
+                    }
+                  ],
+                  "Action": [
+                    "s3:PutObject",
+                    "s3:GetObject",
+                    "s3:GetObjectVersion",
+                    "s3:GetBucketAcl",
+                    "s3:GetBucketLocation"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:caas-gql-template"
+                    }
+                  ],
+                  "Action": ["codecommit:GitPull"]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "CloudFormationS3BucketForCodePipeline": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "BucketName": {
+          "Fn::Sub": "${S3BucketName}"
+        },
+        "AccessControl": "Private",
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        }
+      }
+    }
+  }
+}

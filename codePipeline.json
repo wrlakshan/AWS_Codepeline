@@ -1,0 +1,348 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "CodePipeline sample",
+  "Parameters": {
+    "CodePipelineName": {
+      "Description": "CodePipeline Name",
+      "Type": "String",
+      "MinLength": 1,
+      "MaxLength": 255,
+      "AllowedPattern": "^[a-zA-Z][-a-zA-Z0-9]*$"
+    },
+    "Environment": {
+      "Description": "Type of this Region Name.",
+      "Type": "String"
+    },
+    "Region": {
+      "Description": "Type of this Region Name.",
+      "Type": "String"
+    },
+    "S3BucketName": {
+      "Description": "Type of this Bucket Name.",
+      "Type": "String"
+    },
+    "BuildProjectName": {
+      "Description": "Type of this Build Project Name.",
+      "Type": "String"
+    },
+    "BuildEnvironmentVariables": {
+      "Description": "Type of this Build Environment Variables.",
+      "Type": "String",
+      "Default": "[{\"name\":\"DEPLOYMENT_ENV\",\"value\":\"dev\",\"type\":\"PLAINTEXT\"},{\"name\":\"AWS_PROFILE\",\"value\":\"CICD_PROFILE\",\"type\":\"PLAINTEXT\"}]"
+    },
+    "DeployProjectName": {
+      "Description": "Type of this Deploy Project Name.",
+      "Type": "String"
+    },
+    "DeployEnvironmentVariables": {
+      "Description": "Type of this Deploy Environment Variables.",
+      "Type": "String",
+      "Default": "[{\"name\":\"DEPLOYMENT_ENV\",\"value\":\"dev\",\"type\":\"PLAINTEXT\"},{\"name\":\"AWS_PROFILE\",\"value\":\"CICD_PROFILE\",\"type\":\"PLAINTEXT\"}]"
+    },
+    "RepositoryName": {
+      "Description": "Type of this Repository Name.",
+      "Type": "String"
+    },
+    "BranchName": {
+      "Description": "Type of this Branch Name.",
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "CloudFormationCodePipelineServiceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "Path": "/",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "codepipeline.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": {
+              "Fn::Sub": "${CodePipelineName}-${Environment}-codepipeline-policy"
+            },
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Action": [
+                    "elasticbeanstalk:*",
+                    "ec2:*",
+                    "elasticloadbalancing:*",
+                    "autoscaling:*",
+                    "cloudwatch:*",
+                    "s3:*",
+                    "sns:*",
+                    "cloudformation:*",
+                    "rds:*",
+                    "sqs:*",
+                    "ecs:*"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                },
+                {
+                  "Action": [
+                    "codecommit:GetBranch",
+                    "codecommit:GetCommit",
+                    "codecommit:GetUploadArchiveStatus",
+                    "codecommit:UploadArchive",
+                    "codecommit:CancelUploadArchive"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                },
+                {
+                  "Action": [
+                    "codedeploy:CreateDeployment",
+                    "codedeploy:GetApplicationRevision",
+                    "codedeploy:GetDeployment",
+                    "codedeploy:GetDeploymentConfig",
+                    "codedeploy:RegisterApplicationRevision"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                },
+                {
+                  "Action": [
+                    "codebuild:BatchGetBuilds",
+                    "codebuild:StartBuild"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                },
+                {
+                  "Action": ["iam:PassRole"],
+                  "Resource": "*",
+                  "Effect": "Allow",
+                  "Condition": {
+                    "StringEqualsIfExists": {
+                      "iam:PassedToService": [
+                        "cloudformation.amazonaws.com",
+                        "elasticbeanstalk.amazonaws.com",
+                        "ec2.amazonaws.com",
+                        "ecs-tasks.amazonaws.com"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Action": ["lambda:InvokeFunction", "lambda:ListFunctions"],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                },
+                {
+                  "Action": [
+                    "opsworks:CreateDeployment",
+                    "opsworks:DescribeApps",
+                    "opsworks:DescribeCommands",
+                    "opsworks:DescribeDeployments",
+                    "opsworks:DescribeInstances",
+                    "opsworks:DescribeStacks",
+                    "opsworks:UpdateApp",
+                    "opsworks:UpdateStack"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                },
+                {
+                  "Action": [
+                    "devicefarm:ListProjects",
+                    "devicefarm:ListDevicePools",
+                    "devicefarm:GetRun",
+                    "devicefarm:GetUpload",
+                    "devicefarm:CreateUpload",
+                    "devicefarm:ScheduleRun"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                },
+                {
+                  "Action": [
+                    "servicecatalog:ListProvisioningArtifacts",
+                    "servicecatalog:CreateProvisioningArtifacts",
+                    "servicecatalog:DescribeProvisioningArtifacts",
+                    "servicecatalog:DeleteProvisioningArtifacts",
+                    "servicecatalog:UpdateProduct"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                },
+                {
+                  "Action": ["ecr:DescribeImages"],
+                  "Resource": "*",
+                  "Effect": "Allow"
+                }
+              ]
+            }
+          },
+          {
+            "PolicyName": {
+              "Fn::Sub": "${CodePipelineName}-${Environment}-ssm-parameterstore-policy"
+            },
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Resource": ["*"],
+                  "Action": ["ssm:DescribeParameters"]
+                },
+                {
+                  "Effect": "Allow",
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*"
+                    }
+                  ],
+                  "Action": ["ssm:GetParameters"]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "CloudFormationCodePipelineProject": {
+      "Type": "AWS::CodePipeline::Pipeline",
+      "DependsOn": ["CloudFormationCodePipelineServiceRole"],
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${CodePipelineName}-${Environment}-cicd-pipeline"
+        },
+        "PipelineType": "V1",
+        "RoleArn": {
+          "Fn::GetAtt": ["CloudFormationCodePipelineServiceRole", "Arn"]
+        },
+        "ArtifactStore": {
+          "Type": "S3",
+          "Location": {
+            "Ref": "S3BucketName"
+          }
+        },
+        "Stages": [
+          {
+            "Name": "Source",
+            "Actions": [
+              {
+                "Name": "Source",
+                "Region": {
+                  "Ref": "Region"
+                },
+                "InputArtifacts": [],
+                "ActionTypeId": {
+                  "Category": "Source",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "CodeCommit"
+                },
+                "Namespace": "SourceVariables",
+                "OutputArtifacts": [
+                  {
+                    "Name": "SourceArtifact"
+                  }
+                ],
+                "Configuration": {
+                  "BranchName": {
+                    "Ref": "BranchName"
+                  },
+                  "RepositoryName": {
+                    "Ref": "RepositoryName"
+                  },
+                  "PollForSourceChanges": "false",
+                  "OutputArtifactFormat": "CODE_ZIP"
+                },
+                "RunOrder": 1
+              }
+            ]
+          },
+          {
+            "Name": "Build",
+            "Actions": [
+              {
+                "Name": "BuildProject",
+                "Region": {
+                  "Ref": "Region"
+                },
+                "InputArtifacts": [
+                  {
+                    "Name": "SourceArtifact"
+                  }
+                ],
+                "ActionTypeId": {
+                  "Category": "Build",
+                  "Owner": "AWS",
+                  "Provider": "CodeBuild",
+                  "Version": "1"
+                },
+                "Configuration": {
+                  "BatchEnabled": "false",
+                  "ProjectName": {
+                    "Ref": "BuildProjectName"
+                  },
+                  "EnvironmentVariables": {
+                    "Ref": "BuildEnvironmentVariables"
+                  }
+                },
+                "OutputArtifacts": [
+                  {
+                    "Name": "BuildArtifact"
+                  }
+                ],
+                "Namespace": "BuildVariables",
+                "RunOrder": 2
+              }
+            ]
+          },
+          {
+            "Name": "Deploy",
+            "Actions": [
+              {
+                "Name": "DeployProject",
+                "Region": {
+                  "Ref": "Region"
+                },
+                "InputArtifacts": [
+                  {
+                    "Name": "SourceArtifact"
+                  }
+                ],
+                "ActionTypeId": {
+                  "Category": "Build",
+                  "Owner": "AWS",
+                  "Provider": "CodeBuild",
+                  "Version": "1"
+                },
+                "Configuration": {
+                  "BatchEnabled": "false",
+                  "ProjectName": {
+                    "Ref": "DeployProjectName"
+                  },
+                  "EnvironmentVariables": {
+                    "Ref": "DeployEnvironmentVariables"
+                  }
+                },
+                "OutputArtifacts": [
+                  {
+                    "Name": "DeployArtifact"
+                  }
+                ],
+                "Namespace": "DeployVariables",
+                "RunOrder": 2
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
