@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": " CloudFormation template with YAML - CodePipeline",
+  "Description": " CloudFormation template - CodeBuild",
   "Parameters": {
     "CodeBuildBackendContainerBuildProjectName": {
       "Description": "CI CodeBuild Project Name",
